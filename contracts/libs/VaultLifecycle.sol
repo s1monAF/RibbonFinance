@@ -175,13 +175,13 @@ library VaultLifecycle {
 
         {
             (performanceFeeInAsset, , totalVaultFee) = VaultLifecycle
-            .getVaultFees(
-                balanceForVaultFees,
-                vaultState.lastLockedAmount,
-                vaultState.totalPending,
-                params.performanceFee,
-                params.managementFee
-            );
+                .getVaultFees(
+                    balanceForVaultFees,
+                    vaultState.lastLockedAmount,
+                    vaultState.totalPending,
+                    params.performanceFee,
+                    params.managementFee
+                );
         }
 
         // Take into account the fee
@@ -745,7 +745,7 @@ library VaultLifecycle {
                 (optionsAmount * optionAllocation) /
                 (100 * Vault.OPTION_ALLOCATION_MULTIPLIER);
             allocatedOptions = IOptionsPurchaseQueue(optionsPurchaseQueue)
-            .getOptionsAllocation(address(this), allocatedOptions);
+                .getOptionsAllocation(address(this), allocatedOptions);
 
             if (allocatedOptions != 0) {
                 IERC20(option).approve(optionsPurchaseQueue, allocatedOptions);
@@ -792,8 +792,8 @@ library VaultLifecycle {
         uint256 optionAuctionID
     ) public view returns (uint256) {
         bytes32 clearingPriceOrder = IGnosisAuction(gnosisEasyAuction)
-        .auctionData(optionAuctionID)
-        .clearingPriceOrder;
+            .auctionData(optionAuctionID)
+            .clearingPriceOrder;
 
         if (clearingPriceOrder == bytes32(0)) {
             // Current auction hasn't settled yet

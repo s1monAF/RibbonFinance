@@ -1227,7 +1227,7 @@ contract Controller is
             uint256 latestUpdateTimestamp
         ) = getVaultWithDetails(_owner, _vaultId);
         (bool isUnderCollat, uint256 price, uint256 collateralDust) = calculator
-        .isLiquidatable(vault, typeVault, latestUpdateTimestamp, _roundId);
+            .isLiquidatable(vault, typeVault, latestUpdateTimestamp, _roundId);
 
         return (vault, isUnderCollat, price, collateralDust);
     }

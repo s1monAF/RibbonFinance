@@ -435,8 +435,7 @@ contract RibbonVault is
         withdrawals[msg.sender].shares = 0;
         vaultState.queuedWithdrawShares = (uint256(
             vaultState.queuedWithdrawShares
-        ) - withdrawalShares)
-        .toUint128();
+        ) - withdrawalShares).toUint128();
 
         uint256 withdrawAmount = ShareMath.sharesToAsset(
             withdrawalShares,
@@ -504,8 +503,7 @@ contract RibbonVault is
         }
 
         depositReceipts[msg.sender].unredeemedShares = (unredeemedShares -
-            numShares)
-        .toUint128();
+            numShares).toUint128();
 
         emit Redeem(msg.sender, numShares, depositReceipt.round);
 

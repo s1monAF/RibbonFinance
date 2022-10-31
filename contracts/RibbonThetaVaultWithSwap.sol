@@ -184,7 +184,7 @@ contract RibbonThetaVaultWithSwap is
         // Subtraction underflow checks already ensure it is smaller than uint104
         depositReceipt.amount = (receiptAmount - amount).toUint104();
         vaultState.totalPending = (uint256(vaultState.totalPending) - amount)
-        .toUint128();
+            .toUint128();
 
         emit InstantWithdraw(msg.sender, amount, currentRound);
 
@@ -206,8 +206,7 @@ contract RibbonThetaVaultWithSwap is
     function completeWithdraw() external nonReentrant {
         uint256 withdrawAmount = _completeWithdraw();
         lastQueuedWithdrawAmount = (uint256(lastQueuedWithdrawAmount) -
-            withdrawAmount)
-        .toUint128();
+            withdrawAmount).toUint128();
     }
 
     /**
@@ -248,9 +247,9 @@ contract RibbonThetaVaultWithSwap is
             uint256 lockedBalance,
             uint256 queuedWithdrawAmount
         ) = _rollToNextOption(
-            uint256(lastQueuedWithdrawAmount),
-            currQueuedWithdrawShares
-        );
+                uint256(lastQueuedWithdrawAmount),
+                currQueuedWithdrawShares
+            );
 
         lastQueuedWithdrawAmount = queuedWithdrawAmount;
 
@@ -301,29 +300,28 @@ contract RibbonThetaVaultWithSwap is
             "Round not closed"
         );
 
-
-            VaultLifecycleWithSwap.CommitParams memory commitParams
-         = VaultLifecycleWithSwap.CommitParams({
-            OTOKEN_FACTORY: OTOKEN_FACTORY,
-            USDC: USDC,
-            collateralAsset: vaultParams.asset,
-            currentOption: currentOption,
-            delay: DELAY,
-            lastStrikeOverrideRound: lastStrikeOverrideRound,
-            overriddenStrikePrice: overriddenStrikePrice,
-            strikeSelection: strikeSelection,
-            optionsPremiumPricer: optionsPremiumPricer
-        });
+        VaultLifecycleWithSwap.CommitParams
+            memory commitParams = VaultLifecycleWithSwap.CommitParams({
+                OTOKEN_FACTORY: OTOKEN_FACTORY,
+                USDC: USDC,
+                collateralAsset: vaultParams.asset,
+                currentOption: currentOption,
+                delay: DELAY,
+                lastStrikeOverrideRound: lastStrikeOverrideRound,
+                overriddenStrikePrice: overriddenStrikePrice,
+                strikeSelection: strikeSelection,
+                optionsPremiumPricer: optionsPremiumPricer
+            });
 
         (
             address otokenAddress,
             uint256 strikePrice,
             uint256 delta
         ) = VaultLifecycleWithSwap.commitNextOption(
-            commitParams,
-            vaultParams,
-            vaultState
-        );
+                commitParams,
+                vaultParams,
+                vaultState
+            );
 
         emit NewOptionStrikeSelected(strikePrice, delta);
 

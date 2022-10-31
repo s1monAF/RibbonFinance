@@ -701,7 +701,7 @@ library VaultLifecycleWithSwap {
                 (optionsAmount * optionAllocation) /
                 (100 * Vault.OPTION_ALLOCATION_MULTIPLIER);
             allocatedOptions = IOptionsPurchaseQueue(optionsPurchaseQueue)
-            .getOptionsAllocation(address(this), allocatedOptions);
+                .getOptionsAllocation(address(this), allocatedOptions);
 
             if (allocatedOptions != 0) {
                 IERC20(option).approve(optionsPurchaseQueue, allocatedOptions);

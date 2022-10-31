@@ -147,7 +147,7 @@ contract Otoken is ERC20PermitUpgradeable {
 
         // convert expiry to a readable string
         (uint256 year, uint256 month, uint256 day) = BokkyPooBahsDateTimeLibrary
-        .timestampToDate(expiryTimestamp);
+            .timestampToDate(expiryTimestamp);
 
         // get option type string
         (string memory typeSymbol, string memory typeFull) = _getOptionType(

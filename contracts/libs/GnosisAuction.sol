@@ -84,30 +84,30 @@ library GnosisAuction {
         uint256 auctionEnd = block.timestamp + auctionDetails.duration;
 
         auctionID = IGnosisAuction(auctionDetails.gnosisEasyAuction)
-        .initiateAuction(
-            // address of oToken we minted and are selling
-            auctionDetails.oTokenAddress,
-            // address of asset we want in exchange for oTokens. Should match vault `asset`
-            auctionDetails.asset,
-            // orders can be cancelled at any time during the auction
-            auctionEnd,
-            // order will last for `duration`
-            auctionEnd,
-            // we are selling all of the otokens minus a fee taken by gnosis
-            uint96(oTokenSellAmount),
-            // the minimum we are willing to sell all the oTokens for. A discount is applied on black-scholes price
-            uint96(minBidAmount),
-            // the minimum bidding amount must be 1 * 10 ** -assetDecimals
-            1,
-            // the min funding threshold
-            0,
-            // no atomic closure
-            false,
-            // access manager contract
-            address(0),
-            // bytes for storing info like a whitelist for who can bid
-            bytes("")
-        );
+            .initiateAuction(
+                // address of oToken we minted and are selling
+                auctionDetails.oTokenAddress,
+                // address of asset we want in exchange for oTokens. Should match vault `asset`
+                auctionDetails.asset,
+                // orders can be cancelled at any time during the auction
+                auctionEnd,
+                // order will last for `duration`
+                auctionEnd,
+                // we are selling all of the otokens minus a fee taken by gnosis
+                uint96(oTokenSellAmount),
+                // the minimum we are willing to sell all the oTokens for. A discount is applied on black-scholes price
+                uint96(minBidAmount),
+                // the minimum bidding amount must be 1 * 10 ** -assetDecimals
+                1,
+                // the min funding threshold
+                0,
+                // no atomic closure
+                false,
+                // access manager contract
+                address(0),
+                // bytes for storing info like a whitelist for who can bid
+                bytes("")
+            );
 
         emit InitiateGnosisAuction(
             auctionDetails.oTokenAddress,

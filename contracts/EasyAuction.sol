@@ -128,7 +128,7 @@ contract EasyAuction is Ownable {
     function setFeeParameters(
         uint256 newFeeNumerator,
         address newfeeReceiverAddress
-    ) public onlyOwner() {
+    ) public onlyOwner {
         require(
             newFeeNumerator <= 15,
             "Fee is not allowed to be set higher than 1.5%"
@@ -297,7 +297,7 @@ contract EasyAuction is Ownable {
         uint256 sumOfSellAmounts = 0;
         userId = getUserId(orderSubmitter);
         uint256 minimumBiddingAmountPerOrder = auctionData[auctionId]
-        .minimumBiddingAmountPerOrder;
+            .minimumBiddingAmountPerOrder;
         for (uint256 i = 0; i < _minBuyAmounts.length; i++) {
             require(
                 _minBuyAmounts[i] > 0,
@@ -377,8 +377,8 @@ contract EasyAuction is Ownable {
         uint256 iterationSteps
     ) public atStageSolutionSubmission(auctionId) {
         (, , uint96 auctioneerSellAmount) = auctionData[auctionId]
-        .initialAuctionOrder
-        .decodeOrder();
+            .initialAuctionOrder
+            .decodeOrder();
         uint256 sumBidAmount = auctionData[auctionId].interimSumBidAmount;
         bytes32 iterOrder = auctionData[auctionId].interimOrder;
 
@@ -397,7 +397,7 @@ contract EasyAuction is Ownable {
         // require that the sum of SellAmounts times the price of the last order
         // is not more than initially sold amount
         (, uint96 buyAmountOfIter, uint96 sellAmountOfIter) = iterOrder
-        .decodeOrder();
+            .decodeOrder();
         require(
             sumBidAmount * buyAmountOfIter <
                 auctioneerSellAmount * sellAmountOfIter,
@@ -493,7 +493,8 @@ contract EasyAuction is Ownable {
                 uint256 sellAmountClearingOrder = sellAmountOfIter -
                     uncoveredBids;
                 auctionData[auctionId]
-                .volumeClearingPriceOrder = sellAmountClearingOrder.toUint96();
+                    .volumeClearingPriceOrder = sellAmountClearingOrder
+                    .toUint96();
                 currentBidSum -= uncoveredBids;
                 clearingOrder = currentOrder;
             } else {
@@ -528,8 +529,7 @@ contract EasyAuction is Ownable {
                     minAuctionedBuyAmount
                 );
                 fillVolumeOfAuctioneerOrder = ((currentBidSum *
-                    fullAuctionedAmount) / minAuctionedBuyAmount)
-                .toUint96();
+                    fullAuctionedAmount) / minAuctionedBuyAmount).toUint96();
             }
         }
         auctionData[auctionId].clearingPriceOrder = clearingOrder;
@@ -579,16 +579,15 @@ contract EasyAuction is Ownable {
         }
         AuctionData memory auction = auctionData[auctionId];
         (, uint96 priceNumerator, uint96 priceDenominator) = auction
-        .clearingPriceOrder
-        .decodeOrder();
+            .clearingPriceOrder
+            .decodeOrder();
         (uint64 userId, , ) = orders[0].decodeOrder();
         bool minFundingThresholdNotReached = auctionData[auctionId]
-        .minFundingThresholdNotReached;
+            .minFundingThresholdNotReached;
         for (uint256 i = 0; i < orders.length; i++) {
             (uint64 userIdOrder, uint96 buyAmount, uint96 sellAmount) = orders[
                 i
-            ]
-            .decodeOrder();
+            ].decodeOrder();
             require(
                 userIdOrder == userId,
                 "only allowed to claim for same user"
@@ -648,9 +647,7 @@ contract EasyAuction is Ownable {
             //[11]
             (, uint96 priceNumerator, uint96 priceDenominator) = auctionData[
                 auctionId
-            ]
-            .clearingPriceOrder
-            .decodeOrder();
+            ].clearingPriceOrder.decodeOrder();
             uint256 unsettledAuctionTokens = fullAuctionedAmount -
                 fillVolumeOfAuctioneerOrder;
             uint256 auctioningTokenAmount = unsettledAuctionTokens +

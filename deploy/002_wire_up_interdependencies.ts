@@ -32,16 +32,6 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     "ManualStrikeSelection"
   );
 
-  // await addressBook.setOtokenImpl
-  // await addressBook.setOtokenFactory
-  // await addressBook.setWhitelist
-  // await addressBook.setController
-  // await addressBook.setMarginPool
-  // await addressBook.setMarginCalculator
-  // await addressBook.setLiquidationManager
-  // await addressBook.setOracle
-  // await addressBook.setLiquidationManager
-
   console.log("002-wire-up-interdependencies is finished");
 
   return true;
