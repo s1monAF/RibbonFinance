@@ -80,19 +80,29 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const optionId =
     "0xdfa4c666f67b671dba2d2cf7741a92bd2d871bd55fb6ef706acc30284618f986";
 
-  const priceOracle = await deploy("TestOracle", {
+  const priceOracle = await deploy("TestPriceOracle", {
     ...baseDeployArgs,
     args: [1863855809],
   });
 
-  const volatilityOracle = await deploy("TestOracle", {
+  const volatilityOracle = await deploy("TestVolOracle", {
     ...baseDeployArgs,
     args: [165000000],
   });
 
-  const stableOracle = await deploy("TestOracle", {
+  const stableOracle = await deploy("TestStableOracle", {
     ...baseDeployArgs,
     args: [99991338],
+  });
+
+  const oracle = await deploy("Oracle", {
+    ...baseDeployArgs,
+    args: [],
+  });
+
+  const marginCalculator = await deploy("MarginCalculator", {
+    ...baseDeployArgs,
+    args: [oracle.address],
   });
 
   const optionsPremiumPricer = await deploy("OptionsPremiumPricerInStables", {

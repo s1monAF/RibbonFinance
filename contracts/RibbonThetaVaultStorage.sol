@@ -26,12 +26,12 @@ abstract contract RibbonThetaVaultStorageV2 {
     uint256 public lastQueuedWithdrawAmount;
 }
 
-abstract contract RibbonThetaVaultStorageV3 {
-    // DEPRECATED: Auction will be denominated in USDC if true
-    bool private _isUsdcAuction;
-    // DEPRECATED: Path for swaps
-    bytes private _swapPath;
-}
+// abstract contract RibbonThetaVaultStorageV3 {
+//     // DEPRECATED: Auction will be denominated in USDC if true
+//     bool private _isUsdcAuction;
+//     // DEPRECATED: Path for swaps
+//     bytes private _swapPath;
+// }
 
 abstract contract RibbonThetaVaultStorageV4 {
     // LiquidityGauge contract for the vault
@@ -53,10 +53,10 @@ abstract contract RibbonThetaVaultStorageV7 {
     address public vaultPauser;
 }
 
-abstract contract RibbonThetaVaultStorageV8 {
-    // DEPRECATED: Executor role for Swap offers
-    address private _offerExecutor;
-}
+// abstract contract RibbonThetaVaultStorageV8 {
+//     // DEPRECATED: Executor role for Swap offers
+//     address private _offerExecutor;
+// }
 
 // We are following Compound's method of upgrading new contract implementations
 // When we need to add new storage variables, we create a new version of RibbonThetaVaultStorage
@@ -65,12 +65,12 @@ abstract contract RibbonThetaVaultStorageV8 {
 abstract contract RibbonThetaVaultStorage is
     RibbonThetaVaultStorageV1,
     RibbonThetaVaultStorageV2,
-    RibbonThetaVaultStorageV3,
+    // RibbonThetaVaultStorageV3,
     RibbonThetaVaultStorageV4,
     RibbonThetaVaultStorageV5,
     RibbonThetaVaultStorageV6,
-    RibbonThetaVaultStorageV7,
-    RibbonThetaVaultStorageV8
+    RibbonThetaVaultStorageV7
+    // RibbonThetaVaultStorageV8
 {
 
 }

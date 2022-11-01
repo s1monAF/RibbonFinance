@@ -72,10 +72,10 @@ contract Controller is
     using MarginVault for MarginVault.Vault;
 
     IAddressBook public addressbook;
-    IWhitelist public whitelist;
     IOracle public oracle;
     IMarginCalculator public calculator;
     IMarginPool public pool;
+    IWhitelist public whitelist;
 
     ///@dev scale used in MarginCalculator
     uint256 internal constant BASE = 8;
@@ -102,17 +102,12 @@ contract Controller is
     mapping(address => mapping(uint256 => MarginVault.Vault)) internal vaults;
     /// @dev mapping between an account owner and their approved or unapproved account operators
     mapping(address => mapping(address => bool)) internal operators;
-
-    /******************************************************************** V2.0.0 storage upgrade ******************************************************/
-
     /// @dev mapping to map vault by each vault type, naked margin vault should be set to 1, spread/max loss vault should be set to 0
     mapping(address => mapping(uint256 => uint256)) internal vaultType;
     /// @dev mapping to store the timestamp at which the vault was last updated, will be updated in every action that changes the vault state or when calling sync()
     mapping(address => mapping(uint256 => uint256)) internal vaultLatestUpdate;
-
     /// @dev mapping to store cap amount for naked margin vault per options collateral asset (scaled by collateral asset decimals)
     mapping(address => uint256) internal nakedCap;
-
     /// @dev mapping to store amount of naked margin vaults in pool
     mapping(address => uint256) internal nakedPoolBalance;
 
@@ -209,6 +204,48 @@ contract Controller is
     }
 
     /**
+     * @notice execute a number of actions on specific vaults
+     * @dev can only be called when the system is not fully paused
+     * @param _actions array of actions arguments
+     */
+    function operate(Actions.ActionArgs[] memory _actions)
+        external
+        nonReentrant
+        notFullyPaused
+    {
+        (bool vaultUpdated, address vaultOwner, uint256 vaultId) = _runActions(
+            _actions
+        );
+        if (vaultUpdated) {
+            _verifyFinalState(vaultOwner, vaultId);
+            vaultLatestUpdate[vaultOwner][vaultId] = block.timestamp;
+        }
+    }
+
+    /**
+     * @dev updates the configuration of the controller. can only be called by the owner
+     */
+    function refreshConfiguration() external onlyOwner {
+        _refreshConfigInternal();
+    }
+
+    /**
+     * @notice sync vault latest update timestamp
+     * @dev anyone can update the latest time the vault was touched by calling this function
+     * vaultLatestUpdate will sync if the vault is well collateralized
+     * @param _owner vault owner address
+     * @param _vaultId vault id
+     */
+    function sync(address _owner, uint256 _vaultId)
+        external
+        nonReentrant
+        notFullyPaused
+    {
+        _verifyFinalState(_owner, _vaultId);
+        vaultLatestUpdate[_owner][_vaultId] = block.timestamp;
+    }
+
+    /**
      * @notice allows the partialPauser to toggle the systemPartiallyPaused variable and partially pause or partially unpause the system
      * @dev can only be called by the partialPauser
      * @param _partiallyPaused new boolean value to set systemPartiallyPaused to
@@ -290,13 +327,6 @@ contract Controller is
     }
 
     /**
-     * @dev updates the configuration of the controller. can only be called by the owner
-     */
-    function refreshConfiguration() external onlyOwner {
-        _refreshConfigInternal();
-    }
-
-    /**
      * @notice set cap amount for collateral asset used in naked margin
      * @dev can only be called by owner
      * @param _collateral collateral asset address
@@ -308,41 +338,6 @@ contract Controller is
         nakedCap[_collateral] = _cap;
 
         emit NakedCapUpdated(_collateral, _cap);
-    }
-
-    /**
-     * @notice execute a number of actions on specific vaults
-     * @dev can only be called when the system is not fully paused
-     * @param _actions array of actions arguments
-     */
-    function operate(Actions.ActionArgs[] memory _actions)
-        external
-        nonReentrant
-        notFullyPaused
-    {
-        (bool vaultUpdated, address vaultOwner, uint256 vaultId) = _runActions(
-            _actions
-        );
-        if (vaultUpdated) {
-            _verifyFinalState(vaultOwner, vaultId);
-            vaultLatestUpdate[vaultOwner][vaultId] = block.timestamp;
-        }
-    }
-
-    /**
-     * @notice sync vault latest update timestamp
-     * @dev anyone can update the latest time the vault was touched by calling this function
-     * vaultLatestUpdate will sync if the vault is well collateralized
-     * @param _owner vault owner address
-     * @param _vaultId vault id
-     */
-    function sync(address _owner, uint256 _vaultId)
-        external
-        nonReentrant
-        notFullyPaused
-    {
-        _verifyFinalState(_owner, _vaultId);
-        vaultLatestUpdate[_owner][_vaultId] = block.timestamp;
     }
 
     /**

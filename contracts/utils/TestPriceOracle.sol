@@ -2,7 +2,7 @@
 
 pragma solidity 0.8.17;
 
-contract TestOracle {
+contract TestPriceOracle {
     uint256 public answer;
 
     constructor(uint256 initAnswer) {

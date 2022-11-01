@@ -97,9 +97,207 @@ contract RibbonThetaVaultWithSwap is
         strikeSelection = _initParams._strikeSelection;
     }
 
-    /************************************************
-     *  SETTERS
-     ***********************************************/
+    /**
+     * @notice Sets the next option the vault will be shorting
+     */
+    function commitNextOption() external onlyKeeper nonReentrant {
+        address currentOption = optionState.currentOption;
+        require(
+            currentOption == address(0) && vaultState.round != 1,
+            "Round not closed"
+        );
+
+        VaultLifecycleWithSwap.CommitParams
+            memory commitParams = VaultLifecycleWithSwap.CommitParams({
+                OTOKEN_FACTORY: OTOKEN_FACTORY,
+                USDC: USDC,
+                collateralAsset: vaultParams.asset,
+                currentOption: currentOption,
+                delay: DELAY,
+                lastStrikeOverrideRound: lastStrikeOverrideRound,
+                overriddenStrikePrice: overriddenStrikePrice,
+                strikeSelection: strikeSelection,
+                optionsPremiumPricer: optionsPremiumPricer
+            });
+
+        (
+            address otokenAddress,
+            uint256 strikePrice,
+            uint256 delta
+        ) = VaultLifecycleWithSwap.commitNextOption(
+                commitParams,
+                vaultParams,
+                vaultState
+            );
+
+        emit NewOptionStrikeSelected(strikePrice, delta);
+
+        optionState.nextOption = otokenAddress;
+    }
+
+    /**
+     * @notice Closes the existing short and calculate the shares to mint, new price per share &
+      amount of funds to re-allocate as collateral for the new round
+     * Since we are incrementing the round here, the options are sold in the beginning of a round
+     * instead of at the end of the round. For example, at round 1, we don't sell any options. We
+     * start selling options at the beginning of round 2.
+     */
+    function closeRound() external nonReentrant {
+        address oldOption = optionState.currentOption;
+        require(
+            oldOption != address(0) || vaultState.round == 1,
+            "Round closed"
+        );
+        _closeShort(oldOption);
+
+        uint256 currQueuedWithdrawShares = currentQueuedWithdrawShares;
+        (
+            ,
+            uint256 lockedBalance,
+            uint256 queuedWithdrawAmount
+        ) = _rollToNextOption(
+                uint256(lastQueuedWithdrawAmount),
+                currQueuedWithdrawShares
+            );
+
+        lastQueuedWithdrawAmount = queuedWithdrawAmount;
+
+        uint256 newQueuedWithdrawShares = uint256(
+            vaultState.queuedWithdrawShares
+        ) + currQueuedWithdrawShares;
+        vaultState.queuedWithdrawShares = newQueuedWithdrawShares.toUint128();
+
+        currentQueuedWithdrawShares = 0;
+
+        vaultState.lockedAmount = lockedBalance.toUint104();
+
+        uint256 nextOptionReady = block.timestamp + DELAY;
+        require(
+            nextOptionReady <= type(uint32).max,
+            "Overflow nextOptionReady"
+        );
+        optionState.nextOptionReadyAt = nextOptionReady.toUint32();
+    }
+
+    /**
+     * @notice Rolls the vault's funds into a new short position and create a new offer.
+     */
+    function rollToNextOption() external onlyKeeper nonReentrant {
+        address newOption = optionState.nextOption;
+        require(newOption != address(0), "!nextOption");
+
+        optionState.currentOption = newOption;
+        optionState.nextOption = address(0);
+        uint256 lockedBalance = vaultState.lockedAmount;
+
+        emit OpenShort(newOption, lockedBalance, msg.sender);
+
+        VaultLifecycleWithSwap.createShort(
+            GAMMA_CONTROLLER,
+            MARGIN_POOL,
+            newOption,
+            lockedBalance
+        );
+
+        _createOffer();
+    }
+
+    /**
+     * @notice Stakes a users vault shares
+     * @param numShares is the number of shares to stake
+     */
+    function stake(uint256 numShares) external nonReentrant {
+        address _liquidityGauge = liquidityGauge;
+        require(_liquidityGauge != address(0)); // Removed revert msgs due to contract size limit
+        require(numShares > 0);
+        uint256 heldByAccount = balanceOf(msg.sender);
+        if (heldByAccount < numShares) {
+            _redeem(numShares - heldByAccount, false);
+        }
+        _transfer(msg.sender, address(this), numShares);
+        _approve(address(this), _liquidityGauge, numShares);
+        ILiquidityGauge(_liquidityGauge).deposit(numShares, msg.sender, false);
+    }
+
+    /**
+     * @notice Settle current offer
+     */
+    function settleOffer(ISwap.Bid[] calldata bids)
+        external
+        onlyKeeper
+        nonReentrant
+    {
+        ISwap(GNOSIS_EASY_AUCTION).settleOffer(optionAuctionID, bids);
+    }
+
+    /**
+     * @notice Burn the remaining oTokens left over
+     */
+    function burnRemainingOTokens() external onlyKeeper nonReentrant {
+        VaultLifecycleWithSwap.burnOtokens(
+            GAMMA_CONTROLLER,
+            optionState.currentOption
+        );
+    }
+
+    /**
+     * @notice pause a user's vault position
+     */
+    function pausePosition() external {
+        address _vaultPauserAddress = vaultPauser;
+        require(_vaultPauserAddress != address(0)); // Removed revert msgs due to contract size limit
+        _redeem(0, true);
+        uint256 heldByAccount = balanceOf(msg.sender);
+        _approve(msg.sender, _vaultPauserAddress, heldByAccount);
+        IVaultPauser(_vaultPauserAddress).pausePosition(
+            msg.sender,
+            heldByAccount
+        );
+    }
+
+    /**
+     * @notice Withdraws the assets on the vault using the outstanding `DepositReceipt.amount`
+     * @param amount is the amount to withdraw
+     */
+    function withdrawInstantly(uint256 amount) external nonReentrant {
+        Vault.DepositReceipt storage depositReceipt = depositReceipts[
+            msg.sender
+        ];
+
+        uint256 currentRound = vaultState.round;
+        require(amount > 0, "!amount");
+        require(depositReceipt.round == currentRound, "Invalid round");
+
+        uint256 receiptAmount = depositReceipt.amount;
+        require(receiptAmount >= amount, "Exceed amount");
+
+        // Subtraction underflow checks already ensure it is smaller than uint104
+        depositReceipt.amount = (receiptAmount - amount).toUint104();
+        vaultState.totalPending = (uint256(vaultState.totalPending) - amount)
+            .toUint128();
+
+        emit InstantWithdraw(msg.sender, amount, currentRound);
+
+        transferAsset(msg.sender, amount);
+    }
+
+    /**
+     * @notice Initiates a withdrawal that can be processed once the round completes
+     * @param numShares is the number of shares to withdraw
+     */
+    function initiateWithdraw(uint256 numShares) external nonReentrant {
+        _initiateWithdraw(numShares);
+        currentQueuedWithdrawShares += numShares;
+    }
+
+    /**
+     * @notice Completes a scheduled withdrawal from a past round. Uses finalized pps for the round
+     */
+    function completeWithdraw() external nonReentrant {
+        uint256 withdrawAmount = _completeWithdraw();
+        lastQueuedWithdrawAmount = (uint256(lastQueuedWithdrawAmount) -
+            withdrawAmount).toUint128();
+    }
 
     /**
      * @notice Sets the new strike selection contract
@@ -161,113 +359,16 @@ contract RibbonThetaVaultWithSwap is
         vaultPauser = newVaultPauser;
     }
 
-    /************************************************
-     *  VAULT OPERATIONS
-     ***********************************************/
+    function _createOffer() private {
+        address currentOtoken = optionState.currentOption;
+        uint256 currOtokenPremium = currentOtokenPremium;
 
-    /**
-     * @notice Withdraws the assets on the vault using the outstanding `DepositReceipt.amount`
-     * @param amount is the amount to withdraw
-     */
-    function withdrawInstantly(uint256 amount) external nonReentrant {
-        Vault.DepositReceipt storage depositReceipt = depositReceipts[
-            msg.sender
-        ];
-
-        uint256 currentRound = vaultState.round;
-        require(amount > 0, "!amount");
-        require(depositReceipt.round == currentRound, "Invalid round");
-
-        uint256 receiptAmount = depositReceipt.amount;
-        require(receiptAmount >= amount, "Exceed amount");
-
-        // Subtraction underflow checks already ensure it is smaller than uint104
-        depositReceipt.amount = (receiptAmount - amount).toUint104();
-        vaultState.totalPending = (uint256(vaultState.totalPending) - amount)
-            .toUint128();
-
-        emit InstantWithdraw(msg.sender, amount, currentRound);
-
-        transferAsset(msg.sender, amount);
-    }
-
-    /**
-     * @notice Initiates a withdrawal that can be processed once the round completes
-     * @param numShares is the number of shares to withdraw
-     */
-    function initiateWithdraw(uint256 numShares) external nonReentrant {
-        _initiateWithdraw(numShares);
-        currentQueuedWithdrawShares += numShares;
-    }
-
-    /**
-     * @notice Completes a scheduled withdrawal from a past round. Uses finalized pps for the round
-     */
-    function completeWithdraw() external nonReentrant {
-        uint256 withdrawAmount = _completeWithdraw();
-        lastQueuedWithdrawAmount = (uint256(lastQueuedWithdrawAmount) -
-            withdrawAmount).toUint128();
-    }
-
-    /**
-     * @notice Stakes a users vault shares
-     * @param numShares is the number of shares to stake
-     */
-    function stake(uint256 numShares) external nonReentrant {
-        address _liquidityGauge = liquidityGauge;
-        require(_liquidityGauge != address(0)); // Removed revert msgs due to contract size limit
-        require(numShares > 0);
-        uint256 heldByAccount = balanceOf(msg.sender);
-        if (heldByAccount < numShares) {
-            _redeem(numShares - heldByAccount, false);
-        }
-        _transfer(msg.sender, address(this), numShares);
-        _approve(address(this), _liquidityGauge, numShares);
-        ILiquidityGauge(_liquidityGauge).deposit(numShares, msg.sender, false);
-    }
-
-    /**
-     * @notice Closes the existing short and calculate the shares to mint, new price per share &
-      amount of funds to re-allocate as collateral for the new round
-     * Since we are incrementing the round here, the options are sold in the beginning of a round
-     * instead of at the end of the round. For example, at round 1, we don't sell any options. We
-     * start selling options at the beginning of round 2.
-     */
-    function closeRound() external nonReentrant {
-        address oldOption = optionState.currentOption;
-        require(
-            oldOption != address(0) || vaultState.round == 1,
-            "Round closed"
+        optionAuctionID = VaultLifecycleWithSwap.createOffer(
+            currentOtoken,
+            currOtokenPremium,
+            GNOSIS_EASY_AUCTION,
+            vaultParams
         );
-        _closeShort(oldOption);
-
-        uint256 currQueuedWithdrawShares = currentQueuedWithdrawShares;
-        (
-            ,
-            uint256 lockedBalance,
-            uint256 queuedWithdrawAmount
-        ) = _rollToNextOption(
-                uint256(lastQueuedWithdrawAmount),
-                currQueuedWithdrawShares
-            );
-
-        lastQueuedWithdrawAmount = queuedWithdrawAmount;
-
-        uint256 newQueuedWithdrawShares = uint256(
-            vaultState.queuedWithdrawShares
-        ) + currQueuedWithdrawShares;
-        vaultState.queuedWithdrawShares = newQueuedWithdrawShares.toUint128();
-
-        currentQueuedWithdrawShares = 0;
-
-        vaultState.lockedAmount = lockedBalance.toUint104();
-
-        uint256 nextOptionReady = block.timestamp + DELAY;
-        require(
-            nextOptionReady <= type(uint32).max,
-            "Overflow nextOptionReady"
-        );
-        optionState.nextOptionReadyAt = nextOptionReady.toUint32();
     }
 
     /**
@@ -288,114 +389,5 @@ contract RibbonThetaVaultWithSwap is
             );
             emit CloseShort(oldOption, withdrawAmount, msg.sender);
         }
-    }
-
-    /**
-     * @notice Sets the next option the vault will be shorting
-     */
-    function commitNextOption() external onlyKeeper nonReentrant {
-        address currentOption = optionState.currentOption;
-        require(
-            currentOption == address(0) && vaultState.round != 1,
-            "Round not closed"
-        );
-
-        VaultLifecycleWithSwap.CommitParams
-            memory commitParams = VaultLifecycleWithSwap.CommitParams({
-                OTOKEN_FACTORY: OTOKEN_FACTORY,
-                USDC: USDC,
-                collateralAsset: vaultParams.asset,
-                currentOption: currentOption,
-                delay: DELAY,
-                lastStrikeOverrideRound: lastStrikeOverrideRound,
-                overriddenStrikePrice: overriddenStrikePrice,
-                strikeSelection: strikeSelection,
-                optionsPremiumPricer: optionsPremiumPricer
-            });
-
-        (
-            address otokenAddress,
-            uint256 strikePrice,
-            uint256 delta
-        ) = VaultLifecycleWithSwap.commitNextOption(
-                commitParams,
-                vaultParams,
-                vaultState
-            );
-
-        emit NewOptionStrikeSelected(strikePrice, delta);
-
-        optionState.nextOption = otokenAddress;
-    }
-
-    /**
-     * @notice Rolls the vault's funds into a new short position and create a new offer.
-     */
-    function rollToNextOption() external onlyKeeper nonReentrant {
-        address newOption = optionState.nextOption;
-        require(newOption != address(0), "!nextOption");
-
-        optionState.currentOption = newOption;
-        optionState.nextOption = address(0);
-        uint256 lockedBalance = vaultState.lockedAmount;
-
-        emit OpenShort(newOption, lockedBalance, msg.sender);
-
-        VaultLifecycleWithSwap.createShort(
-            GAMMA_CONTROLLER,
-            MARGIN_POOL,
-            newOption,
-            lockedBalance
-        );
-
-        _createOffer();
-    }
-
-    function _createOffer() private {
-        address currentOtoken = optionState.currentOption;
-        uint256 currOtokenPremium = currentOtokenPremium;
-
-        optionAuctionID = VaultLifecycleWithSwap.createOffer(
-            currentOtoken,
-            currOtokenPremium,
-            GNOSIS_EASY_AUCTION,
-            vaultParams
-        );
-    }
-
-    /**
-     * @notice Settle current offer
-     */
-    function settleOffer(ISwap.Bid[] calldata bids)
-        external
-        onlyKeeper
-        nonReentrant
-    {
-        ISwap(GNOSIS_EASY_AUCTION).settleOffer(optionAuctionID, bids);
-    }
-
-    /**
-     * @notice Burn the remaining oTokens left over
-     */
-    function burnRemainingOTokens() external onlyKeeper nonReentrant {
-        VaultLifecycleWithSwap.burnOtokens(
-            GAMMA_CONTROLLER,
-            optionState.currentOption
-        );
-    }
-
-    /**
-     * @notice pause a user's vault position
-     */
-    function pausePosition() external {
-        address _vaultPauserAddress = vaultPauser;
-        require(_vaultPauserAddress != address(0)); // Removed revert msgs due to contract size limit
-        _redeem(0, true);
-        uint256 heldByAccount = balanceOf(msg.sender);
-        _approve(msg.sender, _vaultPauserAddress, heldByAccount);
-        IVaultPauser(_vaultPauserAddress).pausePosition(
-            msg.sender,
-            heldByAccount
-        );
     }
 }
