@@ -13,6 +13,7 @@ import {
   TestPriceOracle,
   TestVolOracle,
   TestStableOracle,
+  TestingMathLib,
   AddressBook,
   OtokenFactory,
   Controller,
@@ -47,6 +48,7 @@ let volOracle: TestVolOracle;
 let stableOracle: TestStableOracle;
 let whitelist: Whitelist;
 let oracle: Oracle;
+let math: TestingMathLib;
 
 let controllerAddr: string;
 let pricerAddr: string;
@@ -58,6 +60,7 @@ let volOracleAddr: string;
 let stableOracleAddr: string;
 let whitelistAddr: string;
 let oracleAddr: string;
+let mathAddr: string;
 
 const provider = waffle.provider;
 const AddressZero = ethers.constants.AddressZero;
@@ -82,6 +85,11 @@ async function fastForward(time: number): Promise<void> {
   await ethers.provider.send("evm_mine", []); // force mine the next block
 }
 
+async function mineBlockAtTimestamp(timestamp: number): Promise<void> {
+  await ethers.provider.send("evm_setNextBlockTimestamp", [timestamp]);
+  await ethers.provider.send("evm_mine", []);
+}
+
 beforeEach("load deployment fixture", async function () {
   await deployments.fixture();
 
@@ -94,8 +102,8 @@ beforeEach("load deployment fixture", async function () {
   [walletAddr] = await getUnnamedAccounts();
   wallet = await ethers.getSigner(walletAddr);
   accounts = await ethers.getUnnamedSigners();
-  factory = await ethers.getContract("OtokenFactory");
 
+  factory = await ethers.getContract("OtokenFactory");
   vault = await ethers.getContract("RibbonThetaVaultWithSwap");
   pricer = await ethers.getContract("OptionsPremiumPricerInStables");
   strikeSelection = await ethers.getContract("ManualStrikeSelection");
@@ -105,8 +113,8 @@ beforeEach("load deployment fixture", async function () {
   volOracle = await ethers.getContract("TestVolOracle");
   stableOracle = await ethers.getContract("TestStableOracle");
   oracle = await ethers.getContract("Oracle");
-
   whitelist = await ethers.getContract("Whitelist");
+  math = await ethers.getContract("TestingMathLib");
 
   addressbookAddr = addressbook.address;
   factoryAddr = factory.address;
@@ -118,6 +126,7 @@ beforeEach("load deployment fixture", async function () {
   stableOracleAddr = stableOracle.address;
   oracleAddr = oracle.address;
   whitelistAddr = whitelist.address;
+  mathAddr = math.address;
 });
 
 describe("Vault", function () {
@@ -191,6 +200,139 @@ describe("stableOracle", function () {
     it("Should set the right initial parameters", async function () {
       expect(await stableOracle.latestAnswer()).to.equal(99991338);
       expect(await stableOracle.decimals()).to.equal(8);
+    });
+  });
+});
+
+describe("OptionsPremiumPricerInStables", function () {
+  describe("deployment", () => {
+    it("Should set the right initial parameters", async function () {
+      expect(await pricer.optionId()).to.equal(
+        "0xdfa4c666f67b671dba2d2cf7741a92bd2d871bd55fb6ef706acc30284618f986"
+      );
+      expect(await pricer.volatilityOracle()).to.equal(volOracleAddr);
+      expect(await pricer.priceOracle()).to.equal(priceOracleAddr);
+      expect(await pricer.stablesOracle()).to.equal(stableOracleAddr);
+      expect(await pricer.getUnderlyingPrice()).to.equal(1863855809);
+      const strikePrice = 2050000000;
+      const currentTime = 1667548800;
+      const expiry = currentTime + 3600 * 24 * 10;
+      const isPut = false;
+      await mineBlockAtTimestamp(currentTime);
+      console.log("Current time: ", await latestTime());
+      console.log("Expiry: ", expiry);
+      console.log(
+        "Premiusm: ",
+        await pricer.getPremium(strikePrice, expiry, isPut)
+      );
+    });
+  });
+});
+
+describe.only("TestingMathLib", function () {
+  describe("Testing cdf & ncdf", () => {
+    it("Should return the scaled cumulateive probabilities", async function () {
+      console.log(
+        "1e37",
+        await math.getCDF(
+          BigNumber.from("1000000000000000000000000000000000000")
+        )
+      );
+      console.log(
+        "2e37",
+        await math.getCDF(
+          BigNumber.from("2000000000000000000000000000000000000")
+        )
+      );
+      console.log(
+        "3e37",
+        await math.getCDF(
+          BigNumber.from("3000000000000000000000000000000000000")
+        )
+      );
+      console.log(
+        "4e37",
+        await math.getCDF(
+          BigNumber.from("4000000000000000000000000000000000000")
+        )
+      );
+      console.log(
+        "5e37",
+        await math.getCDF(
+          BigNumber.from("5000000000000000000000000000000000000")
+        )
+      );
+      console.log(
+        "5e38",
+        await math.getCDF(
+          BigNumber.from("50000000000000000000000000000000000000")
+        )
+      );
+      console.log(
+        "6e38",
+        await math.getCDF(
+          BigNumber.from("60000000000000000000000000000000000000")
+        )
+      );
+      console.log(
+        "7e38",
+        await math.getCDF(
+          BigNumber.from("70000000000000000000000000000000000000")
+        )
+      );
+      console.log(
+        "8e38",
+        await math.getCDF(
+          BigNumber.from("80000000000000000000000000000000000000")
+        )
+      );
+      console.log(
+        "1e39",
+        await math.getCDF(
+          BigNumber.from("100000000000000000000000000000000000000")
+        )
+      );
+      console.log(
+        "2e39",
+        await math.getCDF(
+          BigNumber.from("200000000000000000000000000000000000000")
+        )
+      );
+      console.log(
+        "3e39",
+        await math.getCDF(
+          BigNumber.from("300000000000000000000000000000000000000")
+        )
+      );
+      console.log(
+        "3.2e39",
+        await math.getCDF(
+          BigNumber.from("320000000000000000000000000000000000000")
+        )
+      );
+      console.log(
+        "3.3e39",
+        await math.getCDF(
+          BigNumber.from("320000000000000000000000000000000000000")
+        )
+      );
+      console.log(
+        "3.4e39",
+        await math.getCDF(
+          BigNumber.from("320000000000000000000000000000000000000")
+        )
+      );
+    });
+  });
+  describe("Testing optimalExp", () => {
+    it("Should return the scaled cumulateive probabilities", async function () {
+      // console.log(await math.getOptimalExp(0));
+      // console.log(await math.getOptimalExp(1));
+      console.log(
+        await math.getOptimalExp(
+          BigNumber.from("170141183460469231731687303715884105729")
+        )
+      );
     });
   });
 });

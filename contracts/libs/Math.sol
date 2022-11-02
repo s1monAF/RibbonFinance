@@ -110,7 +110,6 @@ library Math {
      */
     function optimalExp(uint256 x) internal pure returns (uint256) {
         uint256 res = 0;
-
         uint256 y;
         uint256 z;
 

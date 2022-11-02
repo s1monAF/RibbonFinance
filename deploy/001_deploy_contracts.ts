@@ -154,6 +154,11 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     unsafeAllow: ["delegatecall"],
   });
 
+  await deploy("TestingMathLib", {
+    ...baseDeployArgs,
+    args: [],
+  });
+
   console.log("001-deploy-contracts is finished");
 
   return true;

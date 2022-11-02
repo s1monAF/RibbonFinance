@@ -8,16 +8,15 @@ import "./interfaces/IManualVolatilityOracle.sol";
 import "./libs/DSMath.sol";
 import "./libs/Math.sol";
 
+import "hardhat/console.sol";
+
 contract OptionsPremiumPricerInStables {
-    /**
-     * Immutables
-     */
     bytes32 public immutable optionId;
     IManualVolatilityOracle public immutable volatilityOracle;
     IPriceOracle public immutable priceOracle;
     IPriceOracle public immutable stablesOracle;
-    uint256 private immutable priceOracleDecimals;
-    uint256 private immutable stablesOracleDecimals;
+    uint256 private immutable _priceOracleDecimals;
+    uint256 private immutable _stablesOracleDecimals;
 
     // For reference - IKEEP3rVolatility: 0xCCdfCB72753CfD55C5afF5d98eA5f9C43be9659d
 
@@ -43,8 +42,8 @@ contract OptionsPremiumPricerInStables {
         volatilityOracle = IManualVolatilityOracle(_volatilityOracle);
         priceOracle = IPriceOracle(_priceOracle);
         stablesOracle = IPriceOracle(_stablesOracle);
-        priceOracleDecimals = IPriceOracle(_priceOracle).decimals();
-        stablesOracleDecimals = IPriceOracle(_stablesOracle).decimals();
+        _priceOracleDecimals = IPriceOracle(_priceOracle).decimals();
+        _stablesOracleDecimals = IPriceOracle(_stablesOracle).decimals();
     }
 
     /**
@@ -69,8 +68,8 @@ contract OptionsPremiumPricerInStables {
     ) external view returns (uint256 premium) {
         uint256 sp = priceOracle.latestAnswer();
         (uint256 assetPrice, uint256 assetDecimals) = isPut
-            ? (stablesOracle.latestAnswer(), stablesOracleDecimals)
-            : (sp, priceOracleDecimals);
+            ? (stablesOracle.latestAnswer(), _stablesOracleDecimals)
+            : (sp, _priceOracleDecimals);
 
         premium = _getPremium(
             st,
@@ -99,7 +98,7 @@ contract OptionsPremiumPricerInStables {
             priceOracle.latestAnswer(),
             expiryTimestamp,
             stablesOracle.latestAnswer(),
-            stablesOracleDecimals,
+            _stablesOracleDecimals,
             isPut
         );
     }
@@ -134,7 +133,7 @@ contract OptionsPremiumPricerInStables {
         (uint256 call, uint256 put) = quoteAll(t, v, sp, st);
 
         // Multiplier to convert oracle latestAnswer to 18 decimals
-        uint256 assetOracleMultiplier = 10**uint256(18) - assetDecimals;
+        uint256 assetOracleMultiplier = 10**(uint256(18) - assetDecimals);
 
         // Make option premium denominated in the underlying
         // asset for call vaults and USDC for put vaults
@@ -250,7 +249,7 @@ contract OptionsPremiumPricerInStables {
         uint256 v,
         uint256 sp,
         uint256 st
-    ) private pure returns (uint256 call, uint256 put) {
+    ) private view returns (uint256 call, uint256 put) {
         uint256 _c;
         uint256 _p;
 
@@ -280,11 +279,24 @@ contract OptionsPremiumPricerInStables {
         uint256 v,
         uint256 sp,
         uint256 st
-    ) private pure returns (uint256 premium) {
+    ) private view returns (uint256 premium) {
+        console.logUint(t);
+        console.logUint(v);
+        console.logUint(sp);
+        console.logUint(st);
+
         (uint256 d1, uint256 d2) = derivatives(t, v, sp, st);
+        console.logUint(d1);
+        console.logUint(d2);
+
+        console.log("Before using cdf & ncdf");
+        console.logUint((Math.FIXED_1 * d1) / 1e18);
+        console.logInt((int256(Math.FIXED_1) * int256(d2)) / 1e18);
 
         uint256 cdfD1 = Math.ncdf((Math.FIXED_1 * d1) / 1e18);
         uint256 cdfD2 = Math.cdf((int256(Math.FIXED_1) * int256(d2)) / 1e18);
+        console.logUint(cdfD1);
+        console.logUint(cdfD2);
 
         premium = (sp * cdfD1) / 1e14 - (st * cdfD2) / 1e14;
     }
@@ -338,11 +350,13 @@ contract OptionsPremiumPricerInStables {
         )
     {
         // chainlink oracle returns crypto / usd pairs with 8 decimals, like otoken strike price
-        sp = (spotPrice * (10**8)) / (10**priceOracleDecimals);
+        sp = (spotPrice * (10**8)) / (10**_priceOracleDecimals);
         // annualized vol * 10 ** 8 because delta expects 18 decimals
         // and annualizedVol is 8 decimals
         v = volatilityOracle.annualizedVol(optionId) * (10**10);
         t = (expiryTimestamp - block.timestamp) / (1 days);
+        console.log("Volatility");
+        console.logUint(v);
     }
 
     /**
