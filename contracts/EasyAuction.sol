@@ -7,16 +7,30 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import "./interfaces/AllowListVerifier.sol";
+import "./interfaces/IGnosisAuction.sol";
 import "./libs/IterableOrderedOrderSet.sol";
 import "./libs/IdToAddressBiMap.sol";
 
 //AVAX: 0xb5D00F83680ea5E078e911995c64b43Fbfd1eE61
-contract EasyAuction is Ownable {
+contract EasyAuction is IGnosisAuction, Ownable {
     using SafeERC20 for IERC20;
     using SafeCast for uint256;
     using IterableOrderedOrderSet for IterableOrderedOrderSet.Data;
     using IterableOrderedOrderSet for bytes32;
     using IdToAddressBiMap for IdToAddressBiMap.Data;
+
+    uint64 public numUsers;
+    uint64 public feeReceiverUserId = 1;
+    uint256 public override auctionCounter;
+    uint256 public override feeNumerator = 0;
+    uint256 public constant override FEE_DENOMINATOR = 1000;
+
+    mapping(uint256 => IterableOrderedOrderSet.Data) internal sellOrders;
+    mapping(uint256 => AuctionData) public auctionData;
+    mapping(uint256 => address) public override auctionAccessManager;
+    mapping(uint256 => bytes) public override auctionAccessData;
+
+    IdToAddressBiMap.Data private registeredUsers;
 
     modifier atStageOrderPlacement(uint256 auctionId) {
         require(
@@ -53,89 +67,6 @@ contract EasyAuction is Ownable {
             "Auction not yet finished"
         );
         _;
-    }
-
-    event NewSellOrder(
-        uint256 indexed auctionId,
-        uint64 indexed userId,
-        uint96 buyAmount,
-        uint96 sellAmount
-    );
-    event CancellationSellOrder(
-        uint256 indexed auctionId,
-        uint64 indexed userId,
-        uint96 buyAmount,
-        uint96 sellAmount
-    );
-    event ClaimedFromOrder(
-        uint256 indexed auctionId,
-        uint64 indexed userId,
-        uint96 buyAmount,
-        uint96 sellAmount
-    );
-    event NewUser(uint64 indexed userId, address indexed userAddress);
-    event NewAuction(
-        uint256 indexed auctionId,
-        IERC20 indexed _auctioningToken,
-        IERC20 indexed _biddingToken,
-        uint256 orderCancellationEndDate,
-        uint256 auctionEndDate,
-        uint64 userId,
-        uint96 _auctionedSellAmount,
-        uint96 _minBuyAmount,
-        uint256 minimumBiddingAmountPerOrder,
-        uint256 minFundingThreshold,
-        address allowListContract,
-        bytes allowListData
-    );
-    event AuctionCleared(
-        uint256 indexed auctionId,
-        uint96 soldAuctioningTokens,
-        uint96 soldBiddingTokens,
-        bytes32 clearingPriceOrder
-    );
-    event UserRegistration(address indexed user, uint64 userId);
-
-    struct AuctionData {
-        IERC20 auctioningToken;
-        IERC20 biddingToken;
-        uint256 orderCancellationEndDate;
-        uint256 auctionEndDate;
-        bytes32 initialAuctionOrder;
-        uint256 minimumBiddingAmountPerOrder;
-        uint256 interimSumBidAmount;
-        bytes32 interimOrder;
-        bytes32 clearingPriceOrder;
-        uint96 volumeClearingPriceOrder;
-        bool minFundingThresholdNotReached;
-        bool isAtomicClosureAllowed;
-        uint256 feeNumerator;
-        uint256 minFundingThreshold;
-    }
-    mapping(uint256 => IterableOrderedOrderSet.Data) internal sellOrders;
-    mapping(uint256 => AuctionData) public auctionData;
-    mapping(uint256 => address) public auctionAccessManager;
-    mapping(uint256 => bytes) public auctionAccessData;
-
-    IdToAddressBiMap.Data private registeredUsers;
-    uint64 public numUsers;
-    uint256 public auctionCounter;
-
-    uint256 public feeNumerator = 0;
-    uint256 public constant FEE_DENOMINATOR = 1000;
-    uint64 public feeReceiverUserId = 1;
-
-    function setFeeParameters(
-        uint256 newFeeNumerator,
-        address newfeeReceiverAddress
-    ) public onlyOwner {
-        require(
-            newFeeNumerator <= 15,
-            "Fee is not allowed to be set higher than 1.5%"
-        );
-        // caution: for currently running auctions, the feeReceiverUserId is changing as well.
-        feeReceiverUserId = getUserId(newfeeReceiverAddress);
-        feeNumerator = newFeeNumerator;
     }
 
     // @dev: function to intiate a new auction
@@ -228,7 +159,12 @@ contract EasyAuction is Ownable {
         uint96[] memory _sellAmounts,
         bytes32[] memory _prevSellOrders,
         bytes calldata allowListCallData
-    ) external atStageOrderPlacement(auctionId) returns (uint64 userId) {
+    )
+        external
+        override
+        atStageOrderPlacement(auctionId)
+        returns (uint64 userId)
+    {
         return
             _placeSellOrders(
                 auctionId,
@@ -257,82 +193,6 @@ contract EasyAuction is Ownable {
                 allowListCallData,
                 orderSubmitter
             );
-    }
-
-    function _placeSellOrders(
-        uint256 auctionId,
-        uint96[] memory _minBuyAmounts,
-        uint96[] memory _sellAmounts,
-        bytes32[] memory _prevSellOrders,
-        bytes calldata allowListCallData,
-        address orderSubmitter
-    ) internal returns (uint64 userId) {
-        {
-            address allowListManager = auctionAccessManager[auctionId];
-            if (allowListManager != address(0)) {
-                require(
-                    AllowListVerifier(allowListManager).isAllowed(
-                        orderSubmitter,
-                        auctionId,
-                        allowListCallData
-                    ) == AllowListVerifierHelper.MAGICVALUE,
-                    "user not allowed to place order"
-                );
-            }
-        }
-        {
-            (
-                ,
-                uint96 buyAmountOfInitialAuctionOrder,
-                uint96 sellAmountOfInitialAuctionOrder
-            ) = auctionData[auctionId].initialAuctionOrder.decodeOrder();
-            for (uint256 i = 0; i < _minBuyAmounts.length; i++) {
-                require(
-                    _minBuyAmounts[i] * buyAmountOfInitialAuctionOrder <
-                        sellAmountOfInitialAuctionOrder * _sellAmounts[i],
-                    "limit price not better than mimimal offer"
-                );
-            }
-        }
-        uint256 sumOfSellAmounts = 0;
-        userId = getUserId(orderSubmitter);
-        uint256 minimumBiddingAmountPerOrder = auctionData[auctionId]
-            .minimumBiddingAmountPerOrder;
-        for (uint256 i = 0; i < _minBuyAmounts.length; i++) {
-            require(
-                _minBuyAmounts[i] > 0,
-                "_minBuyAmounts must be greater than 0"
-            );
-            // orders should have a minimum bid size in order to limit the gas
-            // required to compute the final price of the auction.
-            require(
-                _sellAmounts[i] > minimumBiddingAmountPerOrder,
-                "order too small"
-            );
-            if (
-                sellOrders[auctionId].insert(
-                    IterableOrderedOrderSet.encodeOrder(
-                        userId,
-                        _minBuyAmounts[i],
-                        _sellAmounts[i]
-                    ),
-                    _prevSellOrders[i]
-                )
-            ) {
-                sumOfSellAmounts += _sellAmounts[i];
-                emit NewSellOrder(
-                    auctionId,
-                    userId,
-                    _minBuyAmounts[i],
-                    _sellAmounts[i]
-                );
-            }
-        }
-        auctionData[auctionId].biddingToken.safeTransferFrom(
-            msg.sender,
-            address(this),
-            sumOfSellAmounts
-        ); //[1]
     }
 
     function cancelSellOrders(uint256 auctionId, bytes32[] memory _sellOrders)
@@ -448,6 +308,7 @@ contract EasyAuction is Ownable {
     // @dev function settling the auction and calculating the price
     function settleAuction(uint256 auctionId)
         public
+        override
         atStageSolutionSubmission(auctionId)
         returns (bytes32 clearingOrder)
     {
@@ -563,6 +424,7 @@ contract EasyAuction is Ownable {
         bytes32[] memory orders
     )
         public
+        override
         atStageFinished(auctionId)
         returns (
             uint256 sumAuctioningTokenAmount,
@@ -701,6 +563,19 @@ contract EasyAuction is Ownable {
         emit UserRegistration(user, userId);
     }
 
+    function setFeeParameters(
+        uint256 newFeeNumerator,
+        address newfeeReceiverAddress
+    ) public onlyOwner {
+        require(
+            newFeeNumerator <= 15,
+            "Fee is not allowed to be set higher than 1.5%"
+        );
+        // caution: for currently running auctions, the feeReceiverUserId is changing as well.
+        feeReceiverUserId = getUserId(newfeeReceiverAddress);
+        feeNumerator = newFeeNumerator;
+    }
+
     function getUserId(address user) public returns (uint64 userId) {
         if (registeredUsers.hasAddress(user)) {
             userId = registeredUsers.getId(user);
@@ -727,5 +602,81 @@ contract EasyAuction is Ownable {
         returns (bool)
     {
         return sellOrders[auctionId].contains(order);
+    }
+
+    function _placeSellOrders(
+        uint256 auctionId,
+        uint96[] memory _minBuyAmounts,
+        uint96[] memory _sellAmounts,
+        bytes32[] memory _prevSellOrders,
+        bytes calldata allowListCallData,
+        address orderSubmitter
+    ) internal returns (uint64 userId) {
+        {
+            address allowListManager = auctionAccessManager[auctionId];
+            if (allowListManager != address(0)) {
+                require(
+                    AllowListVerifier(allowListManager).isAllowed(
+                        orderSubmitter,
+                        auctionId,
+                        allowListCallData
+                    ) == AllowListVerifierHelper.MAGICVALUE,
+                    "user not allowed to place order"
+                );
+            }
+        }
+        {
+            (
+                ,
+                uint96 buyAmountOfInitialAuctionOrder,
+                uint96 sellAmountOfInitialAuctionOrder
+            ) = auctionData[auctionId].initialAuctionOrder.decodeOrder();
+            for (uint256 i = 0; i < _minBuyAmounts.length; i++) {
+                require(
+                    _minBuyAmounts[i] * buyAmountOfInitialAuctionOrder <
+                        sellAmountOfInitialAuctionOrder * _sellAmounts[i],
+                    "limit price not better than mimimal offer"
+                );
+            }
+        }
+        uint256 sumOfSellAmounts = 0;
+        userId = getUserId(orderSubmitter);
+        uint256 minimumBiddingAmountPerOrder = auctionData[auctionId]
+            .minimumBiddingAmountPerOrder;
+        for (uint256 i = 0; i < _minBuyAmounts.length; i++) {
+            require(
+                _minBuyAmounts[i] > 0,
+                "_minBuyAmounts must be greater than 0"
+            );
+            // orders should have a minimum bid size in order to limit the gas
+            // required to compute the final price of the auction.
+            require(
+                _sellAmounts[i] > minimumBiddingAmountPerOrder,
+                "order too small"
+            );
+            if (
+                sellOrders[auctionId].insert(
+                    IterableOrderedOrderSet.encodeOrder(
+                        userId,
+                        _minBuyAmounts[i],
+                        _sellAmounts[i]
+                    ),
+                    _prevSellOrders[i]
+                )
+            ) {
+                sumOfSellAmounts += _sellAmounts[i];
+                emit NewSellOrder(
+                    auctionId,
+                    userId,
+                    _minBuyAmounts[i],
+                    _sellAmounts[i]
+                );
+            }
+        }
+        auctionData[auctionId].biddingToken.safeTransferFrom(
+            msg.sender,
+            address(this),
+            sumOfSellAmounts
+        ); //[1]
     }
 }

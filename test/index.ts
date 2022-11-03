@@ -14,6 +14,7 @@ import {
   TestVolOracle,
   TestStableOracle,
   TestingMathLib,
+  EasyAuction,
   AddressBook,
   OtokenFactory,
   Controller,
@@ -51,6 +52,7 @@ let whitelist: Whitelist;
 let oracle: Oracle;
 let math: TestingMathLib;
 let cdf: GaussianCDF;
+let auction: EasyAuction;
 
 let controllerAddr: string;
 let pricerAddr: string;
@@ -64,6 +66,7 @@ let whitelistAddr: string;
 let oracleAddr: string;
 let mathAddr: string;
 let cdfAddr: string;
+let auctionAddr: string;
 
 const provider = waffle.provider;
 const AddressZero = ethers.constants.AddressZero;
@@ -123,6 +126,7 @@ beforeEach("load deployment fixture", async function () {
   whitelist = await ethers.getContract("Whitelist");
   math = await ethers.getContract("TestingMathLib");
   cdf = await ethers.getContract("GaussianCDF");
+  auction = await ethers.getContract("EasyAuction");
 
   addressbookAddr = addressbook.address;
   factoryAddr = factory.address;
@@ -136,6 +140,7 @@ beforeEach("load deployment fixture", async function () {
   whitelistAddr = whitelist.address;
   mathAddr = math.address;
   cdfAddr = cdf.address;
+  auctionAddr = auction.address;
 });
 
 describe("Vault", function () {
@@ -362,7 +367,7 @@ describe.only("TestingMathLib", function () {
   });
 });
 
-describe.only("GaussianCDF", () => {
+describe("GaussianCDF", () => {
   describe("CDF", () => {
     it("Should set the right initial parameters", async function () {
       console.log(await cdf.cdf(getZ("0")));
@@ -374,6 +379,18 @@ describe.only("GaussianCDF", () => {
       console.log(await cdf.cdf(getZ("-3")));
       console.log(await cdf.cdf(getZ("4")));
       console.log(await cdf.cdf(getZ("-4")));
+    });
+  });
+});
+
+describe.only("GnosisAuction", () => {
+  describe("deployment", () => {
+    it("Should set the right initial parameters", async function () {
+      expect(await auction.numUsers()).to.equal(0);
+      expect(await auction.feeReceiverUserId()).to.equal(1);
+      expect(await auction.auctionCounter()).to.equal(0);
+      expect(await auction.feeNumerator()).to.equal(0);
+      expect(await auction.FEE_DENOMINATOR()).to.equal(1000);
     });
   });
 });
