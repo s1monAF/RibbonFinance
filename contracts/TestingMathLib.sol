@@ -2,10 +2,16 @@
 
 pragma solidity 0.8.17;
 
+import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import "hardhat/console.sol";
+import "./libs/ABDKMathQuad.sol";
+import "./libs/ABDKMath64x64.sol";
 import "./libs/Math.sol";
+import "./libs/GaussianCDF.sol";
 
 contract TestingMathLib {
+    using SafeCast for uint256;
+
     uint256 internal constant FIXED_1 = 0x080000000000000000000000000000000;
 
     function optimalExp(uint256 x) internal view returns (uint256) {
@@ -135,6 +141,18 @@ contract TestingMathLib {
         console.logUint(res);
 
         return res;
+    }
+
+    function getNum(int128 x) external pure returns (int64) {
+        return ABDKMath64x64.toInt(x);
+    }
+
+    function getExp(uint256 x) external view returns (bytes16) {
+        uint128 x1 = x.toUint128();
+        bytes16 val1 = bytes16(x1);
+        console.logUint(x1);
+        console.logBytes16(val1);
+        return ABDKMathQuad.exp(val1);
     }
 
     function getOptimalExp(uint256 x) external view returns (uint256) {

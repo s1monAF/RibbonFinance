@@ -159,6 +159,11 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     args: [],
   });
 
+  await deploy("GaussianCDF", {
+    ...baseDeployArgs,
+    args: [],
+  });
+
   console.log("001-deploy-contracts is finished");
 
   return true;

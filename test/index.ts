@@ -19,6 +19,7 @@ import {
   Controller,
   Whitelist,
   Oracle,
+  GaussianCDF,
   RibbonThetaVaultWithSwap,
   OptionsPremiumPricerInStables,
   ManualStrikeSelection,
@@ -49,6 +50,7 @@ let stableOracle: TestStableOracle;
 let whitelist: Whitelist;
 let oracle: Oracle;
 let math: TestingMathLib;
+let cdf: GaussianCDF;
 
 let controllerAddr: string;
 let pricerAddr: string;
@@ -61,11 +63,16 @@ let stableOracleAddr: string;
 let whitelistAddr: string;
 let oracleAddr: string;
 let mathAddr: string;
+let cdfAddr: string;
 
 const provider = waffle.provider;
 const AddressZero = ethers.constants.AddressZero;
 
 function getTokenAmount(num: string): BigNumber {
+  return ethers.utils.parseEther(num);
+}
+
+function getZ(num: string): BigNumber {
   return ethers.utils.parseEther(num);
 }
 
@@ -115,6 +122,7 @@ beforeEach("load deployment fixture", async function () {
   oracle = await ethers.getContract("Oracle");
   whitelist = await ethers.getContract("Whitelist");
   math = await ethers.getContract("TestingMathLib");
+  cdf = await ethers.getContract("GaussianCDF");
 
   addressbookAddr = addressbook.address;
   factoryAddr = factory.address;
@@ -127,6 +135,7 @@ beforeEach("load deployment fixture", async function () {
   oracleAddr = oracle.address;
   whitelistAddr = whitelist.address;
   mathAddr = math.address;
+  cdfAddr = cdf.address;
 });
 
 describe("Vault", function () {
@@ -326,13 +335,45 @@ describe.only("TestingMathLib", function () {
   });
   describe("Testing optimalExp", () => {
     it("Should return the scaled cumulateive probabilities", async function () {
-      // console.log(await math.getOptimalExp(0));
-      // console.log(await math.getOptimalExp(1));
+      console.log(await math.getOptimalExp(BigNumber.from(0)));
+    });
+  });
+
+  describe("Testing exp", () => {
+    it("Should return the exponentiated values", async function () {
+      console.log(await math.getExp(BigNumber.from(0)));
+      console.log(await math.getExp(BigNumber.from(1)));
+      console.log(await math.getExp(BigNumber.from(2)));
+      console.log(await math.getExp(BigNumber.from(20000)));
+    });
+  });
+
+  describe("Testing getNum", () => {
+    it("Should return the original floating number from numerator", async function () {
+      console.log(await math.getNum(BigNumber.from("36893488147419103232")));
+      console.log(await math.getNum(BigNumber.from("36893488157419103232")));
       console.log(
-        await math.getOptimalExp(
-          BigNumber.from("170141183460469231731687303715884105729")
-        )
+        await math.getNum(BigNumber.from("42391158275216203514294433201"))
       );
+      console.log(
+        await math.getNum(BigNumber.from("10301051460877537453973547267843"))
+      );
+    });
+  });
+});
+
+describe.only("GaussianCDF", () => {
+  describe("CDF", () => {
+    it("Should set the right initial parameters", async function () {
+      console.log(await cdf.cdf(getZ("0")));
+      console.log(await cdf.cdf(getZ("1")));
+      console.log(await cdf.cdf(getZ("-1")));
+      console.log(await cdf.cdf(getZ("-2")));
+      console.log(await cdf.cdf(getZ("2")));
+      console.log(await cdf.cdf(getZ("3")));
+      console.log(await cdf.cdf(getZ("-3")));
+      console.log(await cdf.cdf(getZ("4")));
+      console.log(await cdf.cdf(getZ("-4")));
     });
   });
 });
